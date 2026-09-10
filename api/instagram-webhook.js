@@ -15,68 +15,58 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "POST") {
+    console.log("FULL WEBHOOK:", JSON.stringify(req.body, null, 2));
+
     try {
-      const body = req.body;
-
-      if (body.object !== "instagram") {
-        return res.status(404).end();
-      }
-
-      for (const entry of body.entry || []) {
+      for (const entry of req.body.entry || []) {
         for (const event of entry.messaging || []) {
+
+          console.log("EVENT:", JSON.stringify(event, null, 2));
+
+          if (event.message?.is_echo) continue;
+
           const senderId = event.sender?.id;
-          const message = event.message;
+          const text = event.message?.text;
 
-          if (!senderId || !message?.text || message?.is_echo) {
-            continue;
-          }
+          console.log("SENDER ID:", senderId);
+          console.log("MESSAGE:", text);
 
-          const text = message.text.trim();
+          if (!senderId || !text) continue;
 
-          console.log("Instagram DM:", senderId, text);
-
-          await sendInstagramMessage(
-            senderId,
-            `You said: ${text}`
+          const response = await fetch(
+            "https://graph.instagram.com/v26.0/me/messages",
+            {
+              method: "POST",
+              headers: {
+                Authorization:
+                  `Bearer ${process.env.INSTAGRAM_ACCESS_TOKEN}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                recipient: {
+                  id: senderId
+                },
+                message: {
+                  text: "✅ Instagram bot is working!"
+                }
+              })
+            }
           );
+
+          const result = await response.json();
+
+          console.log("INSTAGRAM SEND STATUS:", response.status);
+          console.log("INSTAGRAM SEND RESULT:", result);
         }
       }
 
       return res.status(200).send("EVENT_RECEIVED");
     } catch (error) {
-      console.error(error);
+      console.error("WEBHOOK ERROR:", error);
+
       return res.status(200).send("EVENT_RECEIVED");
     }
   }
 
-  return res.status(405).end();
-}
-
-async function sendInstagramMessage(userId, text) {
-  const response = await fetch(
-    "https://graph.instagram.com/v26.0/me/messages",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.INSTAGRAM_ACCESS_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        recipient: {
-          id: userId,
-        },
-        message: {
-          text,
-        },
-      }),
-    }
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error("Instagram API error:", data);
-  }
-
-  return data;
+  return res.status(405).send("Method not allowed");
 }
